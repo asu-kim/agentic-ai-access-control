@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Dashboard</h2>
+  <p><strong>{{ username }}</strong>, welcome! This page is protected.</p>
+
+  <div class="card">
+    <h3>Agent Simulator</h3>
+    <p>Quick demo: the agent will attempt to book a hotel under $200 and pay using your vaulted token.</p>
+    <form method="post" action="{{ url_for('agent_book_hotel') }}" style="margin-bottom:10px;">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn">Book a hotel under $200</button>
+    </form>
+    <a class="btn" href="{{ url_for('vault') }}">Add / Update Payment to Vault</a>
+    <a class="btn" href="{{ url_for('workflow_history') }}">View Workflows</a>
+  </div>
+
+  <div class="card">
+    <h3>Session</h3>
+    <p>Remaining login time: <span id="remaining-seconds">--</span> seconds</p>
+    <p style="opacity:.7;">(Auto logout after 10 minutes of inactivity)</p>
+  </div>
+
+  <form id="complete-form" class="card" method="post" action="{{ url_for('complete') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label style="display:flex; align-items:center; gap:10px;">
+      <input id="task-completed" type="checkbox" name="completed">
+      Task completed (sign out automatically)
+    </label>
+  </form>
+{% endblock %}
