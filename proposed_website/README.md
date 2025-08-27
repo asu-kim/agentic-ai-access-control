@@ -1,4 +1,4 @@
-# Agentic AI Demo – Flask Login + Vault + Agent Simulator
+# Prototype for Agentic AI
 
 A research-oriented Flask prototype showcasing secure handling of sensitive data for Agentic AI workflows. It includes authentication, a tokenized **Data Vault** (encrypted), an **Agent Simulator** (“Book a hotel under $200”), **workflow logging**, a **10-minute idle auto-logout**, a **“Task completed → auto sign-out”** control, and a **remaining session time** indicator.
 
@@ -118,8 +118,6 @@ Optional:
 - **Do NOT use real payment details.** Use fake data only.
 - Enable HTTPS and set `SESSION_COOKIE_SECURE=True` in production.
 - Keep `SECRET_KEY` and `VAULT_KEY` out of source control.
-- CSRF is basic; consider **Flask-WTF** for stricter protection.
-- The mock PSP (`mock_charge`) is illustrative. Before integrating a real PSP, add: explicit user approvals, audit logs, rate limiting, and policy enforcement.
 
 ---
 
