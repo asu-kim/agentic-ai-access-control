@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-  <h1>Agentic AI Demo</h1>
+  <h1>A Prototype Framework for Agentic AI's Access Control</h1>
   <p>Minimal demo: login, encrypted vault with tokenization, agent simulator, and workflow logs.</p>
   {% if not session.get('user_id') %}
     <p><a class="btn" href="{{ url_for('register') }}">Sign up</a> <a class="btn" href="{{ url_for('login') }}">Sign in</a></p>
