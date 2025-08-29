@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Agent Workflows</h2>
+  {% if not items %}
+    <p>No workflows yet.</p>
+  {% else %}
+    <div class="card" style="gap:18px;">
+      {% for it in items %}
+        <div style="border:1px solid #2b3b66; padding:12px; border-radius:12px; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <strong>{{ it.name }}</strong>
+              <span style="opacity:.8; margin-left:8px;">Status: {{ it.status }}</span>
+            </div>
+            {% if it.status == 'awaiting_payment' %}
+              <a class="btn" href="{{ url_for('scenario_pay', workflow_id=it.id) }}">
+                Authorize payment
+              </a>
+            {% endif %}
+          </div>
+          <ol>
+            {% for s in it.steps %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ol>
+          <small>Created: {{ it.created_at }}</small>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endblock %}
