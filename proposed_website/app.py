@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, secrets, sqlite3, json
+import os, secrets, sqlite3, json, random
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from typing import Optional, Tuple
@@ -11,32 +11,20 @@ from flask import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
 
-# ----------------------------------------------------------------------------
-# App factory
-# ----------------------------------------------------------------------------
-
 def create_app(test_config: Optional[dict] = None) -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-secret-change-me")
     app.config["DATABASE"] = os.path.join(app.root_path, "app.db")
     app.config["SESSION_COOKIE_HTTPONLY"] = True
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-    app.config["SESSION_COOKIE_SECURE"] = False  # True behind HTTPS
-    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=10)  # idle timeout
+    app.config["SESSION_COOKIE_SECURE"] = False
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(minutes=10)
 
-    VAULT_KEY = os.environ.get("VAULT_KEY")
-    if not VAULT_KEY:
-        # Demo only: generate ephemeral key (tokens become invalid after restart)
-        VAULT_KEY = Fernet.generate_key().decode("utf-8")
+    VAULT_KEY = os.environ.get("VAULT_KEY") or Fernet.generate_key().decode("utf-8")
     app.config["VAULT_KEY"] = VAULT_KEY
-    # Comma-separated prior keys for rotation/migration (base64 Fernet keys)
     prev = os.environ.get("PREVIOUS_VAULT_KEYS", "")
     app.config["PREVIOUS_VAULT_KEYS"] = [k.strip() for k in prev.split(",") if k.strip()]
 
-    if test_config:
-        app.config.update(test_config)
-
-    # ---------------- DB helpers ----------------
     def get_db() -> sqlite3.Connection:
         if "db" not in g:
             g.db = sqlite3.connect(app.config["DATABASE"], detect_types=sqlite3.PARSE_DECLTYPES)
@@ -80,9 +68,28 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             );
             """
         )
+        # --- Lightweight migrations for legacy DBs ---
+        def col_exists(table, col):
+            rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+            return any(r[1] == col for r in rows)
+        def index_exists(table, idx_name):
+            rows = db.execute(f"PRAGMA index_list({table})").fetchall()
+            return any(r[1] == idx_name for r in rows)
+
+        # Ensure users.email exists; add column + unique index if missing
+        if not col_exists("users", "email"):
+            db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            if not index_exists("users", "idx_users_email_unique"):
+                db.execute("CREATE UNIQUE INDEX idx_users_email_unique ON users(email)")
+        # Ensure username unique index (in case legacy table lacked UNIQUE constraint)
+        if not index_exists("users", "idx_users_username_unique"):
+            try:
+                db.execute("CREATE UNIQUE INDEX idx_users_username_unique ON users(username)")
+            except Exception:
+                pass
+
         db.commit()
 
-    # ---------------- CSRF ----------------
     def get_csrf_token() -> str:
         token = session.get("csrf_token")
         if not token:
@@ -95,7 +102,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         if not form_token or form_token != session.get("csrf_token"):
             abort(400, description="Invalid CSRF token.")
 
-    # ---------------- Login guard ----------------
     def login_required(view):
         @wraps(view)
         def wrapped_view(**kwargs):
@@ -105,7 +111,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             return view(**kwargs)
         return wrapped_view
 
-    # ---------------- Security headers ----------------
     @app.after_request
     def set_security_headers(resp):
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -115,10 +120,8 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:")
         return resp
 
-    # ---------------- Vault helpers ----------------
     def get_fernet() -> Fernet:
         return Fernet(app.config["VAULT_KEY"].encode("utf-8"))
-
     def get_prev_fernets():
         res = []
         for k in app.config.get("PREVIOUS_VAULT_KEYS", []):
@@ -145,17 +148,14 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         vid = row["id"]
         blob = row["blob"]
         curr = get_fernet()
-        # Try current key first
         try:
             data = json.loads(curr.decrypt(blob).decode("utf-8"))
             return data
         except Exception:
             pass
-        # Try previous keys; if success, re-encrypt with current key (lazy migration)
         for f in get_prev_fernets():
             try:
                 data = json.loads(f.decrypt(blob).decode("utf-8"))
-                # Re-encrypt with current key and persist
                 try:
                     new_blob = curr.encrypt(json.dumps(data).encode("utf-8"))
                     db.execute("UPDATE vault SET blob = ? WHERE id = ?", (new_blob, vid))
@@ -182,7 +182,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         remaining = int(max(0, (total - elapsed).total_seconds()))
         return remaining
 
-    # ---------------- Idle timeout ----------------
     @app.before_request
     def check_idle_timeout():
         uid = session.get("user_id")
@@ -198,12 +197,10 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             session.clear()
             flash("Session expired after 10 minutes of inactivity. Please sign in again.", "info")
             return redirect(url_for("login"))
-        # Do not treat heartbeat/static as activity (avoid resetting idle timer)
         skip_update = request.endpoint in {"session_remaining", "static"}
         if not skip_update:
             session["last_seen"] = now.isoformat()
 
-    # ---------------- Routes ----------------
     @app.route("/")
     def index():
         return render_template("index.html")
@@ -233,7 +230,7 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             except sqlite3.IntegrityError as e:
                 msg = str(e).lower()
                 if "users.username" in msg: flash("Username already exists.", "danger")
-                elif "users.email" in msg: flash("Email already registered.", "danger")
+                elif "users.email" in msg or "idx_users_email_unique" in msg: flash("Email already registered.", "danger")
                 else: flash("Registration error.", "danger")
                 return render_template("register.html", csrf_token=get_csrf_token())
             flash("Registration complete. Please sign in.", "success")
@@ -326,7 +323,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
     def session_remaining():
         return {"seconds": get_remaining_seconds()}
 
-    # ---------------- Existing demo: quick hotel mock ----------------
     @app.route("/agent/book-hotel", methods=["POST"])
     @login_required
     def agent_book_hotel():
@@ -339,7 +335,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             flash("No vaulted payment method found. Add one in Vault first.", "warning")
             return redirect(url_for("vault"))
         token = row["token"]
-
         steps.append("Agent: Search hotels under $200 in target city/date.")
         steps.append("Agent: Select candidate hotel 'Demo Inn' ($179/night).")
         steps.append("Agent: Request payment authorization via token.")
@@ -347,18 +342,12 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         ok, message = mock_charge(session["user_id"], token, amount)
         steps.append(f"Payment Gateway: {message}")
         status = "success" if ok else "failed"
-
         db.execute("INSERT INTO workflows (user_id, name, steps, status) VALUES (?, ?, ?, ?)",
                    (session["user_id"], "BookHotelUnder200", json.dumps(steps), status))
         db.commit()
-
-        if ok:
-            flash("Booking confirmed! (mock)", "success")
-        else:
-            flash(f"Booking failed: {message}", "danger")
+        if ok: flash("Booking confirmed! (mock)", "success")
+        else:  flash(f"Booking failed: {message}", "danger")
         return redirect(url_for("workflow_history"))
-
-    # ---------------- New: Scenario builders (Product / Hotel / Flight) ----------------
 
     def _ensure_vault_token() -> Optional[str]:
         db = get_db()
@@ -378,13 +367,10 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
     def _extract_amount_from_steps(steps: list[str]) -> Optional[int]:
         for s in steps:
             if s.startswith("AMOUNT="):
-                try:
-                    return int(s.split("=",1)[1])
-                except Exception:
-                    return None
+                try: return int(s.split("=",1)[1])
+                except Exception: return None
         return None
 
-    # ---- Product ----
     @app.route("/scenario/product", methods=["GET", "POST"])
     @login_required
     def scenario_product():
@@ -397,7 +383,16 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             if not item_name or max_price <= 0:
                 flash("Please provide item name and a positive max price.", "danger")
                 return render_template("scenario_product.html", csrf_token=get_csrf_token())
-            # Demo logic: assume found item at min(max_price, 129)
+            if random.random() < 0.30:
+                found = int(max_price * 1.15) or (max_price + 10)
+                steps = [
+                    f"Agent: Search '{item_name}' with rating ≥ {min_rating} and delivery ≤ {max_delivery_days} days.",
+                    f"Agent: Found offers starting at ${found}, which exceeds your max ${max_price}.",
+                    "Agent: Declined creating a payable scenario."
+                ]
+                _insert_workflow("ProductPurchase", steps, "rejected")
+                flash("No scenario created: lowest price exceeds your max.", "warning")
+                return redirect(url_for("workflow_history"))
             amount = min(max_price, 129)
             steps = [
                 f"Agent: Search '{item_name}' with rating ≥ {min_rating} and delivery ≤ {max_delivery_days} days.",
@@ -410,7 +405,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             return redirect(url_for("scenario_pay", workflow_id=wid))
         return render_template("scenario_product.html", csrf_token=get_csrf_token())
 
-    # ---- Hotel ----
     @app.route("/scenario/hotel", methods=["GET", "POST"])
     @login_required
     def scenario_hotel():
@@ -421,9 +415,7 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             checkin = request.form.get("checkin", "")
             checkout = request.form.get("checkout", "")
             min_rating = float(request.form.get("min_rating", "0") or 0)
-
-            # --- Validation ---
-            from datetime import date as _date
+            from datetime import date as _date, timedelta as _timedelta
             errors = []
             if not (location and price_per_night > 0 and checkin and checkout):
                 errors.append("Please fill all required fields.")
@@ -434,19 +426,26 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 errors.append("Invalid date format.")
                 d1 = d2 = None
             today = _date.today()
-            if d1 and d1 < today:
-                errors.append("Check-in date cannot be in the past.")
-            if d2 and d2 < today:
-                errors.append("Check-out date cannot be in the past.")
-            if d1 and d2 and d2 <= d1:
-                errors.append("Check-out date must be after check-in date.")
-
+            horizon = today + _timedelta(days=365)
+            if d1 and d1 < today: errors.append("Check-in date cannot be in the past.")
+            if d2 and d2 < today: errors.append("Check-out date cannot be in the past.")
+            if d1 and d2 and d2 <= d1: errors.append("Check-out date must be after check-in date.")
+            if d1 and d1 > horizon: errors.append("Check-in date must be within one year from today.")
+            if d2 and d2 > horizon: errors.append("Check-out date must be within one year from today.")
             if errors:
-                for e in errors:
-                    flash(e, "danger")
+                for e in errors: flash(e, "danger")
                 return render_template("scenario_hotel.html", csrf_token=get_csrf_token())
-
             nights = max(1, (d2 - d1).days)
+            if random.random() < 0.30:
+                found_nightly = max(price_per_night + 20, int(price_per_night * 1.15))
+                steps = [
+                    f"Agent: Search hotels in {location} rating ≥ {min_rating}, ≤ ${price_per_night}/night for {nights} night(s).",
+                    f"Agent: Found offers starting at ${found_nightly}/night, which exceeds your max ${price_per_night}/night.",
+                    "Agent: Declined creating a payable scenario."
+                ]
+                _insert_workflow("HotelBooking", steps, "rejected")
+                flash("No scenario created: nightly rate exceeds your max.", "warning")
+                return redirect(url_for("workflow_history"))
             amount = min(200 * nights, price_per_night * nights)
             steps = [
                 f"Agent: Search hotels in {location} rating ≥ {min_rating}, ≤ ${price_per_night}/night for {nights} night(s).",
@@ -459,8 +458,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             return redirect(url_for("scenario_pay", workflow_id=wid))
         return render_template("scenario_hotel.html", csrf_token=get_csrf_token())
 
-
-    # ---- Flight ----
     @app.route("/scenario/flight", methods=["GET", "POST"])
     @login_required
     def scenario_flight():
@@ -470,17 +467,14 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             depart_date = request.form.get("depart_date", "")
             return_date = request.form.get("return_date", "")
             price_ceiling = int(request.form.get("price_ceiling", "0") or 0)
-
-            # --- Validation ---
-            from datetime import date as _date
+            from datetime import date as _date, timedelta as _timedelta
             errors = []
             if not (depart_date and price_ceiling > 0):
                 errors.append("Please provide at least a depart date and price ceiling.")
             try:
                 d_dep = _date.fromisoformat(depart_date)
             except Exception:
-                d_dep = None
-                errors.append("Invalid depart date.")
+                d_dep = None; errors.append("Invalid depart date.")
             d_ret = None
             if return_date:
                 try:
@@ -488,18 +482,27 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 except Exception:
                     errors.append("Invalid return date.")
             today = _date.today()
-            if d_dep and d_dep < today:
-                errors.append("Depart date cannot be in the past.")
-            if d_ret and d_ret < today:
-                errors.append("Return date cannot be in the past.")
-            if d_dep and d_ret and d_ret <= d_dep:
-                errors.append("Return date must be after depart date.")
-
+            horizon = today + _timedelta(days=365)
+            if d_dep and d_dep < today: errors.append("Depart date cannot be in the past.")
+            if d_ret and d_ret < today: errors.append("Return date cannot be in the past.")
+            if d_dep and d_ret and d_ret <= d_dep: errors.append("Return date must be after depart date.")
+            if d_dep and d_dep > horizon: errors.append("Depart date must be within one year from today.")
+            if d_ret and d_ret > horizon: errors.append("Return date must be within one year from today.")
             if errors:
-                for e in errors:
-                    flash(e, "danger")
+                for e in errors: flash(e, "danger")
                 return render_template("scenario_flight.html", csrf_token=get_csrf_token())
-
+            if random.random() < 0.30:
+                found = max(price_ceiling + 30, int(price_ceiling * 1.15))
+                rt = f" return {return_date}" if return_date else ""
+                al = f" on {airline}" if airline else ""
+                steps = [
+                    f"Agent: Search flights{al} depart {depart_date}{rt} under ${price_ceiling}.",
+                    f"Agent: Found itineraries starting at ${found}, which exceeds your max ${price_ceiling}.",
+                    "Agent: Declined creating a payable scenario."
+                ]
+                _insert_workflow("FlightPurchase", steps, "rejected")
+                flash("No scenario created: fare exceeds your max.", "warning")
+                return redirect(url_for("workflow_history"))
             amount = min(price_ceiling, 199)
             rt = f" return {return_date}" if return_date else ""
             al = f" on {airline}" if airline else ""
@@ -514,16 +517,13 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             return redirect(url_for("scenario_pay", workflow_id=wid))
         return render_template("scenario_flight.html", csrf_token=get_csrf_token())
 
-
-    # ---- Payment review + token authorization ----
     @app.route("/scenario/pay/<int:workflow_id>", methods=["GET", "POST"])
     @login_required
     def scenario_pay(workflow_id: int):
         db = get_db()
         row = db.execute("SELECT * FROM workflows WHERE id = ? AND user_id = ?",
                          (workflow_id, session['user_id'])).fetchone()
-        if not row:
-            abort(404)
+        if not row: abort(404)
         steps = json.loads(row["steps"]) if row["steps"] else []
         amount = _extract_amount_from_steps(steps) or 0
         if request.method == "POST":
@@ -538,18 +538,12 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             db.execute("UPDATE workflows SET steps = ?, status = ? WHERE id = ?",
                        (json.dumps(steps), status, workflow_id))
             db.commit()
-            if ok:
-                flash("Payment approved (mock).", "success")
-            else:
-                flash(message, "danger")
+            if ok: flash("Payment approved (mock).", "success")
+            else:  flash(message, "danger")
             return redirect(url_for("workflow_history"))
         return render_template("scenario_pay.html", item={
-            "id": row["id"],
-            "name": row["name"],
-            "steps": steps,
-            "status": row["status"],
-            "created_at": row["created_at"],
-            "amount": amount,
+            "id": row["id"], "name": row["name"], "steps": steps, "status": row["status"],
+            "created_at": row["created_at"], "amount": amount,
         }, csrf_token=get_csrf_token())
 
     def mock_charge(user_id: int, token: str, amount: int) -> Tuple[bool, str]:
@@ -579,27 +573,19 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
 
     @app.cli.command("migrate-keys")
     def migrate_keys_command():
-        """Re-encrypt all vault rows to the current VAULT_KEY.
-        Provide previous keys via PREVIOUS_VAULT_KEYS env (comma-separated).
-        """
         db = get_db()
         rows = db.execute("SELECT id, blob FROM vault").fetchall()
         curr = get_fernet()
         prevs = get_prev_fernets()
-        migrated = 0
-        total = 0
+        migrated = 0; total = 0
         for r in rows:
             total += 1
-            vid = r["id"]
-            blob = r["blob"]
-            # If current key can decrypt, skip
-            ok = False
+            vid = r["id"]; blob = r["blob"]
             try:
                 json.loads(curr.decrypt(blob).decode("utf-8"))
                 continue
             except Exception:
                 pass
-            # Try previous keys
             data = None
             for f in prevs:
                 try:
@@ -611,13 +597,11 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 try:
                     new_blob = curr.encrypt(json.dumps(data).encode("utf-8"))
                     db.execute("UPDATE vault SET blob = ? WHERE id = ?", (new_blob, vid))
-                    db.commit()
-                    migrated += 1
+                    db.commit(); migrated += 1
                 except Exception:
                     pass
         print(f"Migrated {migrated}/{total} vault rows to current key.")
 
-    # Initialize DB on first run
     with app.app_context():
         init_db()
 
