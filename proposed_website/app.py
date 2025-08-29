@@ -547,8 +547,8 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         }, csrf_token=get_csrf_token())
 
     def mock_charge(user_id: int, token: str, amount: int) -> Tuple[bool, str]:
-        if amount > 200:
-            return False, "Amount exceeds $200 limit."
+        if amount > 1,000:
+            return False, "Amount exceeds $1,000 limit."
         data = vault_get_blob_by_token(user_id, token)
         if not data:
             return False, "Invalid token."
