@@ -1,6 +1,6 @@
 # A Prototype Framework for Agentic AI's Access Control
 
-## Security Notes 
+## ⚠️ Security Notes 
 
 - **Do NOT use real payment details or addresses.** Use fake data only.
 - Enable HTTPS and set `SESSION_COOKIE_SECURE=True` in production.
@@ -24,7 +24,7 @@ PY
 # export PREVIOUS_VAULT_KEYS="old-key-1,old-key-2"
 
 python app.py
-# open http://127.0.0.1:5000
+# open http://127.0.0.1:5000 in the web browser
 ```
 
 If your shell cannot find `pip`, use:
@@ -54,6 +54,7 @@ Minimal demo app showing:
 - Hotel: no past dates; checkout after check-in; both within **1 year** from today.
 - Flight: no past dates; return after depart; both within **1 year** from today.
 - Scenario creation may be **randomly rejected (30%)** if the agent find the products with market price > user max (product/hotel/flight).
+
 
 ## Notes
 - Vault encryption uses **Fernet** with `VAULT_KEY`. If you rotate keys, provide old keys via `PREVIOUS_VAULT_KEYS` and run `flask --app app migrate-keys`.
