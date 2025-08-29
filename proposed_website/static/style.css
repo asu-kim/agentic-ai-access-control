@@ -5,34 +5,19 @@ body {
   background: #0b1020;
   color: #e8ecf1;
 }
-.nav {
-  display: flex; gap: 12px; align-items: center;
-  padding: 12px 16px; background: #141b34; border-bottom: 1px solid #223;
-}
+.nav { display: flex; gap: 12px; align-items: center; padding: 12px 16px; background: #141b34; border-bottom: 1px solid #223; }
 .nav a { color: #b8c6ff; text-decoration: none; font-weight: 600; }
 .nav .userchip { margin-left: auto; opacity: .8; }
 .container { max-width: 880px; margin: 24px auto; padding: 0 16px; }
 h1, h2, h3 { margin: 0 0 16px; }
-.card {
-  display: grid; gap: 12px;
-  background: #151c39; padding: 16px; border-radius: 16px;
-  border: 1px solid #22314b; box-shadow: 0 10px 30px rgba(0,0,0,.25);
-}
+.card { display: grid; gap: 12px; background: #151c39; padding: 16px; border-radius: 16px; border: 1px solid #22314b; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
 label { display: grid; gap: 6px; font-size: 14px; }
-input {
-  padding: 10px 12px; border-radius: 10px; border: 1px solid #2b3b66;
-  background: #0f1530; color: #e8ecf1;
-}
-.btn {
-  display: inline-block; padding: 10px 14px; border-radius: 999px; border: 1px solid #2b3b66;
-  background: #1a2452; color: #e8ecf1; text-decoration: none; cursor: pointer;
-}
+input { padding: 10px 12px; border-radius: 10px; border: 1px solid #2b3b66; background: #0f1530; color: #e8ecf1; }
+.btn { display: inline-block; padding: 10px 14px; border-radius: 999px; border: 1px solid #2b3b66; background: #1a2452; color: #e8ecf1; text-decoration: none; cursor: pointer; }
 .flash-wrap { display: grid; gap: 8px; margin-bottom: 16px; }
 .flash { padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; }
 .flash.success { background: #10381d; border-color: #1f6f3a; }
-.flash.info    { background: #0d2a3a; border-color: #1d4e6b; }
+.flash.info { background: #0d2a3a; border-color: #1d4e6b; }
 .flash.warning { background: #3a2d0d; border-color: #6b5a1d; }
-.flash.danger  { background: #3a0d0d; border-color: #6b1d1d; }
+.flash.danger { background: #3a0d0d; border-color: #6b1d1d; }
 .footer { text-align: center; opacity: .6; padding: 24px; }
-
-.flow-svg { overflow-x: auto; padding: 8px 0; }
