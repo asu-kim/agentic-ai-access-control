@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Agentic AI Demo</h1>
+  <p>Minimal demo: login, encrypted vault with tokenization, agent simulator, and workflow logs.</p>
+  {% if not session.get('user_id') %}
+    <p><a class="btn" href="{{ url_for('register') }}">Sign up</a> <a class="btn" href="{{ url_for('login') }}">Sign in</a></p>
+  {% else %}
+    <p><a class="btn" href="{{ url_for('dashboard') }}">Go to dashboard</a></p>
+  {% endif %}
+{% endblock %}

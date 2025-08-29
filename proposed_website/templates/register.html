@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <h2>Sign up</h2>
+  <form method="post" class="card">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>Username
+      <input type="text" name="username" required minlength="3" maxlength="32" />
+    </label>
+    <label>Email
+      <input type="email" name="email" required />
+    </label>
+    <label>Password (8+ characters)
+      <input type="password" name="password" required minlength="8" />
+    </label>
+    <button type="submit" class="btn">Create account</button>
+  </form>
+{% endblock %}
