@@ -125,11 +125,11 @@ SELECTORS: Dict[str, List[Tuple[str, str]]] = {
         ("xpath", "//button[contains(.,'Sign in') or contains(.,'Log in')]"),
     ],
     "LOGIN_USERNAME": [
-        ("css", "input#userid, input[name='username'], input[type='email']"),
+        ("css", "input[id='eliloUserID']"),
         ("xpath", "//input[@id='userid' or @name='username' or @type='email']"),
     ],
     "LOGIN_PASSWORD": [
-        ("css", "input#password, input[name='password'], input[type='password']"),
+        ("css", "input[id='eliloPassword']"),
         ("xpath", "//input[@id='password' or @name='password' or @type='password']"),
     ],
     "LOGIN_SUBMIT": [
@@ -417,7 +417,7 @@ def amex_is_transfer_page() -> str:
 AGENT_SYSTEM_PROMPT = """
 You are an autonomous banking assistant operating a REAL browser.
 Your mission:
-  (1) Open the base URL (amex_go_home)
+  (1) Open the base URL (amex_go_home) and login using amex_header_sign_in()
   (2) If you see a login context, perform login using provided credentials (amex_fill_username, amex_fill_password, amex_submit_login).
       If blocked by CAPTCHA or 2FA, call human_gate() and wait.
   (3) Confirm you are on dashboard (amex_is_dashboard).
@@ -462,7 +462,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser(description="Agentic login -> balance -> transfer nav")
     ap.add_argument("--base-url", default="https://www.americanexpress.com/?inav=NavLogo")
-    ap.add_argument("--max-steps", type=int, default=30)
+    ap.add_argument("--max-steps", type=int, default=8)
     ap.add_argument("--username", default=os.getenv("AMEX_USER"))
     ap.add_argument("--password", default=os.getenv("AMEX_PASS"))
     args = ap.parse_args()
@@ -475,11 +475,12 @@ Base URL: {spec.base_url}
 Test credentials (optional): username={spec.username or 'HITL'}, password={'***' if spec.password else 'HITL'}
 
 Print each steps' description for users.
+Store username and password as variables. 
 
 Steps to perform on the  site:
 - amex_go_home(base_url)
 - close_popups()
-- use amex_header_sign_in() first.
+- amex_header_sign_in()
 - If amex_is_login_context says True:
     - If username/password provided, call amex_fill_username/amex_fill_password, then amex_submit_login
     - Else call human_gate() and let a human complete login
