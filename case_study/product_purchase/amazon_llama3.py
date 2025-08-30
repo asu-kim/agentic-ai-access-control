@@ -53,20 +53,62 @@ firefox_options.set_preference("intl.accept_languages", "en-US, en")
 
 driver = helium.start_firefox(headless=False, options=firefox_options)
 
+from urllib.parse import urlparse, parse_qs
+
+def _is_checkout_spc_url(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        host = parsed.netloc.lower()
+        path = parsed.path.lower()
+        query = parse_qs(parsed.query or "")
+
+        if "/checkout/p/" not in path or "/spc" not in path:
+            return False
+
+        pipeline = (query.get("pipelineType", [""])[0] or "").lower()
+        if pipeline != "chewbacca":
+            return False
+
+        return True
+    except Exception:
+        return False
+
+
 def _wait_css(sel: str, timeout: int = 30):
     return WebDriverWait(driver, timeout).until(
         EC.presence_of_element_located((By.CSS_SELECTOR, sel))
     )
 
-def _try_click(by: By, val: str, timeout: int = 6) -> bool:
-    try:
-        el = WebDriverWait(driver, timeout).until(
-            EC.element_to_be_clickable((by, val))
-        )
-        driver.execute_script("arguments[0].click();", el)
-        return True
-    except Exception:
-        return False
+def _try_click(by: By, val: str,timeout: int, retries: int = 2, center: bool = True) -> bool:
+    """
+    Try to click an element found by (by, val) quickly without waiting for clickable.
+    Returns True if any click attempt succeeds, else False.
+    """
+    for attempt in range(retries):
+        try:
+            elems = driver.find_elements(by, val)
+            if not elems:
+                continue
+            el = next((e for e in elems if e.is_displayed()), elems[0])
+            driver.execute_script(
+                "arguments[0].scrollIntoView({block:'center', inline:'center'});", el
+            )
+            driver.execute_script("window.scrollBy(0, -80);")
+            try:
+                el.click()
+                return True
+            except Exception:
+                try:
+                    driver.execute_script("arguments[0].click();", el)
+                    return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return False
+
 
 def _exists(by: By, val: str) -> bool:
     try:
@@ -315,13 +357,11 @@ def amazon_stop_if_checkout_spc(close_browser: bool = True) -> str:
              "NOT_AT_CHECKOUT_SPC" if the current page is not the SPC checkout.
     """
     current = driver.current_url or ""
-    # Quick URL check
     if _is_checkout_spc_url(current):
         try:
-            # Best-effort: look for checkout markers to reduce false positives
-            # (do not fail if elements are missing)
             _ = driver.find_elements(By.XPATH, "//*[contains(translate(.,'PLACE YOUR ORDER','place your order'),'place your order')]")
             _ = driver.find_elements(By.CSS_SELECTOR, "input[id='placeOrder'], #submitOrderButtonId")
+            _ = driver.find_elements(By.CSS_SELECTOR, "input[name='placeYourOrder1']")
         except Exception:
             pass
         if close_browser:
@@ -358,7 +398,7 @@ def amazon_open_results(query: str, max_price: float | None = None) -> str:
             rh = f"p_36%3A-{cents}"
             url = re.sub(r"(&rh=[^&]*)", f"&rh={rh}", url) if "&rh=" in url else url + (("&" if "?" in url else "?") + f"rh={rh}")
             driver.get(url)
-            _results_ready(timeout=30)
+            _results_ready(timeout=10)
         except Exception:
             pass
         try:
@@ -367,7 +407,7 @@ def amazon_open_results(query: str, max_price: float | None = None) -> str:
             sleep(0.3)
             opt = driver.find_element(By.XPATH, "//a[contains(@href,'s?') and contains(., 'Price: Low to High')]")
             driver.execute_script("arguments[0].click();", opt)
-            _results_ready(timeout=30)
+            _results_ready(timeout=10)
         except Exception:
             pass
     return f"results_opened:{query}:cap={max_price}"
@@ -408,7 +448,7 @@ def amazon_add_to_cart() -> str:
         str: "ADDED" if successful, else "ADD_FAILED_NEEDS_HUMAN".
     """
     for _ in range(2):    # (By.CSS_SELECTOR, "input#add-to-cart-button")
-        for by, val in [(By.CSS_SELECTOR, "input#add-to-cart-button"),  By.CSS_SELECTOR, "button[name='submit.addToCart']", (By.XPATH, "i//*[@id='a-autoid-3-announce']")]:
+        for by, val in [(By.CSS_SELECTOR, "button[aria-lable='Add to cart']"), (By.CSS_SELECTOR, "input#Add to cart"),  (By.CSS_SELECTOR, "button[name='submit.addToCart']"), (By.XPATH, "//*[@id='add-to-cart-button']")]:
             if _try_click(by, val, timeout=6):
                 sleep(2)
                 _close_warranty_modal()
@@ -456,6 +496,7 @@ Always call the registered @tool functions directly.
 
 Store max_price as a variable first.
 Print each steps' description for users.
+If you failed to execute the function, call human_gate()
 
 Steps:
 - Prefer direct results via amazon_open_results(query, max_price).
@@ -463,7 +504,7 @@ Steps:
 - To add to cart: call amazon_add_to_cart(). If you receive ADD_FAILED_NEEDS_HUMAN, call human_gate(), then retry add.
 - To proceed to checkout: call amazon_proceed_to_checkout(). If it returns HUMAN_NEEDED_SIGNIN or HUMAN_NEEDED_CAPTCHA, call human_gate() and retry.
 - NEVER place the order. Stop after reaching the checkout/payment stage.
-- After calling amazon_proceed_to_checkout(), call amazon_stop_if_checkout_spc(). 
+- After calling amazon_proceed_to_checkout(), call amazon_stop_if_checkout_spc() and finish your action. 
 
 amazon_open_results(query, max_price): Open Amazon search results for the query, optionally capped by a maximum price.
 amazon_next_results_page(): Go to the next search results page if available.
@@ -471,7 +512,7 @@ amazon_open_product(): Open a product detail page
 amazon_add_to_cart(): Click the “Add to Cart” button, retrying after variant selection if needed.
 amazon_proceed_to_checkout(): Proceed from the cart to the checkout flow (may require sign-in or CAPTCHA).
 close_popups(): Dismiss any visible modal or popup windows (e.g., warranty upsell, alerts).
-amazon_stop_if_checkout_spc(close_browser=True): Stop the process if SPC checkout page is reached.
+amazon_stop_if_checkout_spc(close_browser=True): Stop the process if SPC checkout page is reached. After call this, finish your action.
 go_back(): Navigate back to the previous page.
 go_to(url): Navigate directly to a specified URL.
 finish_session(): Close the browser session.
