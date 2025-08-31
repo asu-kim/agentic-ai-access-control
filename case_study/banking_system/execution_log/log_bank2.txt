@@ -1,6 +1,12 @@
 ./log.sh bank8.py --username sunnykim928 --password Sunny4642!
 `max_new_tokens` not provided, using this default value for `max_new_tokens`: 4096
-Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:08,  2.90s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:05<00:05,  2.77s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:08<00:02,  2.67s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  1.84s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  2.17s/it]
+
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:08,  2.90s/it]
+Loading checkpoint shards:  50%|█████     | 2/4 [00:05<00:05,  2.77s/it]
+Loading checkpoint shards:  75%|███████▌  | 3/4 [00:08<00:02,  2.67s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  1.84s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  2.17s/it]
 ╭───────────────────────────────── New run ─────────────────────────────────╮
 │                                                                           │
 │ Base URL: https://www.americanexpress.com/?inav=NavLogo                   │
