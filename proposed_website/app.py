@@ -1,15 +1,52 @@
 from __future__ import annotations
-import os, secrets, sqlite3, json, random
+import os, secrets, sqlite3, json, random, base64, hashlib
 from datetime import datetime, timedelta, timezone, date
 from functools import wraps
 from typing import Optional, Tuple
 
-from flask import (
-    Flask, render_template, request, redirect, url_for,
-    session, g, flash, abort
-)
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask import Flask, render_template, request, redirect, url_for, session, g, flash, abort
+from werkzeug.security import check_password_hash as wz_check_password_hash  # legacy support
 from cryptography.fernet import Fernet
+
+try:
+    from argon2 import PasswordHasher
+    from argon2 import exceptions as argon2_exceptions
+    _HAS_ARGON2 = True
+    _ph = PasswordHasher(time_cost=2, memory_cost=102400, parallelism=8, hash_len=32, salt_len=16)
+except Exception:
+    _HAS_ARGON2 = False
+    _ph = None
+
+
+def pbkdf2_hash(password: str, iterations: int = 100_000, salt_bytes: int = 16) -> str:
+    """Return 'iterations$salt_b64$hash_b64'"""
+    salt = os.urandom(salt_bytes)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return f"{iterations}${base64.b64encode(salt).decode()}${base64.b64encode(dk).decode()}"
+
+def pbkdf2_verify(stored: str, password: str) -> bool:
+    """Verify our 'iterations$salt$hash' format."""
+    try:
+        iterations_str, salt_b64, hash_b64 = stored.split("$")
+        iterations = int(iterations_str)
+        salt = base64.b64decode(salt_b64)
+        stored_hash = base64.b64decode(hash_b64)
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+        # constant-time compare
+        return secrets.compare_digest(dk, stored_hash)
+    except Exception:
+        return False
+
+def looks_like_our_pbkdf2(stored: str) -> bool:
+    parts = stored.split("$")
+    if len(parts) != 3: return False
+    try:
+        int(parts[0])
+        base64.b64decode(parts[1])
+        base64.b64decode(parts[2])
+        return True
+    except Exception:
+        return False
 
 def create_app(test_config: Optional[dict] = None) -> Flask:
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -68,26 +105,23 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             );
             """
         )
-        # --- Lightweight migrations for legacy DBs ---
+        # Lightweight migrations for legacy DBs
         def col_exists(table, col):
             rows = db.execute(f"PRAGMA table_info({table})").fetchall()
             return any(r[1] == col for r in rows)
-        def index_exists(table, idx_name):
+        def index_exists(table, idx):
             rows = db.execute(f"PRAGMA index_list({table})").fetchall()
-            return any(r[1] == idx_name for r in rows)
+            return any(r[1] == idx for r in rows)
 
-        # Ensure users.email exists; add column + unique index if missing
         if not col_exists("users", "email"):
             db.execute("ALTER TABLE users ADD COLUMN email TEXT")
             if not index_exists("users", "idx_users_email_unique"):
                 db.execute("CREATE UNIQUE INDEX idx_users_email_unique ON users(email)")
-        # Ensure username unique index (in case legacy table lacked UNIQUE constraint)
         if not index_exists("users", "idx_users_username_unique"):
             try:
                 db.execute("CREATE UNIQUE INDEX idx_users_username_unique ON users(username)")
             except Exception:
                 pass
-
         db.commit()
 
     def get_csrf_token() -> str:
@@ -224,8 +258,9 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 return render_template("register.html", csrf_token=get_csrf_token())
             db = get_db()
             try:
+                hashed = pbkdf2_hash(password)  # PBKDF2-HMAC(SHA-256) + random salt
                 db.execute("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                           (username, email, generate_password_hash(password)))
+                           (username, email, hashed))
                 db.commit()
             except sqlite3.IntegrityError as e:
                 msg = str(e).lower()
@@ -246,7 +281,38 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
             db = get_db()
             user = db.execute("SELECT * FROM users WHERE username = ? OR email = ?",
                               (login_id, login_id)).fetchone()
-            if user and check_password_hash(user["password_hash"], password):
+            ok = False
+            if user:
+                stored = user["password_hash"] or ""
+                # 1) Our PBKDF2 format: iterations$salt$hash
+                if looks_like_our_pbkdf2(stored):
+                    ok = pbkdf2_verify(stored, password)
+                # 2) Werkzeug legacy "pbkdf2:sha256:iters$salt$hash"
+                elif stored.startswith("pbkdf2:sha256:"):
+                    try:
+                        ok = wz_check_password_hash(stored, password)
+                        if ok:
+                            # migrate to our PBKDF2 format
+                            new_hash = pbkdf2_hash(password)
+                            db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
+                            db.commit()
+                    except Exception:
+                        ok = False
+                # 3) Argon2 legacy (if library available)
+                elif stored.startswith("$argon2") and _HAS_ARGON2:
+                    try:
+                        _ph.verify(stored, password)
+                        ok = True
+                        # migrate to our PBKDF2 format
+                        new_hash = pbkdf2_hash(password)
+                        db.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user["id"]))
+                        db.commit()
+                    except Exception:
+                        ok = False
+                else:
+                    ok = False
+
+            if ok:
                 session.clear()
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
@@ -423,8 +489,7 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 d1 = _date.fromisoformat(checkin)
                 d2 = _date.fromisoformat(checkout)
             except Exception:
-                errors.append("Invalid date format.")
-                d1 = d2 = None
+                errors.append("Invalid date format."); d1 = d2 = None
             today = _date.today()
             horizon = today + _timedelta(days=365)
             if d1 and d1 < today: errors.append("Check-in date cannot be in the past.")
@@ -547,8 +612,8 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
         }, csrf_token=get_csrf_token())
 
     def mock_charge(user_id: int, token: str, amount: int) -> Tuple[bool, str]:
-        if amount > 1000:
-            return False, "Amount exceeds $1,000 limit."
+        if amount > 200:
+            return False, "Amount exceeds $200 limit."
         data = vault_get_blob_by_token(user_id, token)
         if not data:
             return False, "Invalid token."
@@ -570,37 +635,6 @@ def create_app(test_config: Optional[dict] = None) -> Flask:
                 "created_at": r["created_at"],
             })
         return render_template("workflows.html", items=items)
-
-    @app.cli.command("migrate-keys")
-    def migrate_keys_command():
-        db = get_db()
-        rows = db.execute("SELECT id, blob FROM vault").fetchall()
-        curr = get_fernet()
-        prevs = get_prev_fernets()
-        migrated = 0; total = 0
-        for r in rows:
-            total += 1
-            vid = r["id"]; blob = r["blob"]
-            try:
-                json.loads(curr.decrypt(blob).decode("utf-8"))
-                continue
-            except Exception:
-                pass
-            data = None
-            for f in prevs:
-                try:
-                    data = json.loads(f.decrypt(blob).decode("utf-8"))
-                    break
-                except Exception:
-                    continue
-            if data is not None:
-                try:
-                    new_blob = curr.encrypt(json.dumps(data).encode("utf-8"))
-                    db.execute("UPDATE vault SET blob = ? WHERE id = ?", (new_blob, vid))
-                    db.commit(); migrated += 1
-                except Exception:
-                    pass
-        print(f"Migrated {migrated}/{total} vault rows to current key.")
 
     with app.app_context():
         init_db()
