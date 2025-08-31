@@ -1,6 +1,12 @@
 ./log.sh amazon.py --query keyboard --max 100
 `max_new_tokens` not provided, using this default value for `max_new_tokens`: 4096
-Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:08,  2.90s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:05<00:05,  2.89s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:08<00:02,  2.77s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  1.90s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  2.24s/it]
+
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]
+Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:08,  2.90s/it]
+Loading checkpoint shards:  50%|█████     | 2/4 [00:05<00:05,  2.89s/it]
+Loading checkpoint shards:  75%|███████▌  | 3/4 [00:08<00:02,  2.77s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  1.90s/it]
+Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  2.24s/it]
 ╭───────────────────────────────── New run ─────────────────────────────────╮
 │                                                                           │
 │ Find a product on Amazon for query: "keyboard" with max price: 100.0.     │
