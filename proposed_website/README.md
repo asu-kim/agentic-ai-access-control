@@ -86,3 +86,7 @@ Minimal demo app showing:
    └─ scenario_flight.html
    └─ scenario_pay.html
 ```
+
+## Workflow Diagram
+![Image of Workflow](figures/workflow.png?raw=true "Title")
+
