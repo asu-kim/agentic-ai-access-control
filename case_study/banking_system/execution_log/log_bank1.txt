@@ -1,6 +1,10 @@
 ./log.sh bank.py --username testuser --password test
 `max_new_tokens` not provided, using this default value for `max_new_tokens`: 4096
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.02s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:03<00:00,  1.77s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:03<00:00,  1.96s/it]
+
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.02s/it]
+Loading checkpoint shards: 100%|██████████| 2/2 [00:03<00:00,  1.77s/it]
+Loading checkpoint shards: 100%|██████████| 2/2 [00:03<00:00,  1.96s/it]
 ╭────────────────────────────────── New run ───────────────────────────────────╮
 │                                                                              │
 │ Base URL: https://www.americanexpress.com/?inav=NavLogo                      │
