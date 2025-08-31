@@ -1,6 +1,10 @@
 ./log.sh hotel_llama3.py --query Book a hotel in New York, from 09-28-2025 to 09-30-2025, 4-star or higher
 `max_new_tokens` not provided, using this default value for `max_new_tokens`: 4096
-Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.17s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  1.86s/it]Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  2.06s/it]
+
+Loading checkpoint shards:   0%|          | 0/2 [00:00<?, ?it/s]
+Loading checkpoint shards:  50%|█████     | 1/2 [00:03<00:03,  3.17s/it]
+Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  1.86s/it]
+Loading checkpoint shards: 100%|██████████| 2/2 [00:04<00:00,  2.06s/it]
 ╭────────────────────────────────── New run ───────────────────────────────────╮
 │                                                                              │
 │ Book a hotel in New York, from 09-28-2025 to 09-30-2025, 4-star or higher    │
