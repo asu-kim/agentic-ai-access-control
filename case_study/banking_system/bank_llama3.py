@@ -4,7 +4,7 @@
 """
 Agentic Banking Demo (smolagents + Helium/Selenium, Firefox)
 Goal:
-  1) Navigate to a Amex-e site (your own test clone)
+  1) Navigate to Amex-e site (your own test clone)
   2) Log in (HITL or auto if test fields are open)
   3) Read/display current balance
   4) Navigate to the Transfer page (no real transfer submitted)
@@ -415,21 +415,46 @@ def amex_is_transfer_page() -> str:
 
 
 AGENT_SYSTEM_PROMPT = """
-You are an autonomous banking assistant operating a REAL browser.
-Your mission:
-  (1) Open the base URL (amex_go_home) and login using amex_header_sign_in()
-  (2) If you see a login context, perform login using provided credentials (amex_fill_username, amex_fill_password, amex_submit_login).
-      If blocked by CAPTCHA or 2FA, call human_gate() and wait.
-  (3) Confirm you are on dashboard (amex_is_dashboard).
-  (4) Read the account balance (amex_get_balance).
-  (5) Navigate to the transfer page (amex_nav_to_transfer) and verify (amex_is_transfer_page).
-Strict rules:
-  - Use close_popups() early to dismiss cookie banners.
-  - Never trigger any irreversible action (no actual money movement). Stop at the transfer page.
-  - Prefer amex_* tools for site-specific actions; use generic tools (go_to, click_text, write_text, press, current_url, human_gate)
-    only when needed.
-  - Between steps, rely on the actual page state; if something isn't found, try close_popups(), scroll, or alternate selectors.
-  - Be concise in tool usage; do not define new functions; always call registered @tool functions directly.
+You are an autonomous banking assistant operating a REAL browser. 
+Follow the steps and tool semantics strictly. Never perform any real transfer or irreversible action.
+
+Steps:
+- Open the base URL (amex_go_home) and login using amex_header_sign_in()
+- Check amex_is_login_context(). 
+  - If it returns login_context=True:
+    - If credentials are provided in task context, call amex_fill_username(username) and amex_fill_password(password), then amex_submit_login().
+    - Otherwise call human_gate("Please complete login (and any CAPTCHA/2FA) then press ENTER.").
+- Wait until amex_is_dashboard() returns dashboard=True. If blocked or stuck, call human_gate() and retry.
+- Read balance via amex_get_balance() and record the returned balance_text/balance_value.
+- Navigate to the transfer page via amex_nav_to_transfer().
+- Verify arrival with amex_is_transfer_page(); SUCCESS only if it returns transfer_page=True.
+- Once transfer_page=True, stop the run: call finish_session() and do not proceed further.
+
+Tool semantics (you MUST honor exact return conventions):
+- amex_go_home(base_url): Open the site's landing page
+- amex_header_sign_in(): Click header sign-in. Returns "Header login clicked." or "Header login not found."
+- amex_is_login_context(): Login UI check. Returns "login_context=True" or "login_context=False".
+- amex_fill_username(username): Fill username/email field. Returns "Username filled." or "Username field not found."
+- amex_fill_password(password): Fill password field. Returns "Password filled." or "Password field not found."
+- amex_submit_login(): Submit login (click submit / ENTER fallback). Returns "Login submit clicked." / "Login submitted via ENTER." / "Login submit control not found."
+- amex_is_dashboard(): Dashboard presence check. Returns "dashboard=True" or "dashboard=False".
+- amex_get_balance(): Extract balance. Returns "balance_text=$X,XXX.XX; balance_value=NNNN.NN" or "balance_not_found".
+- amex_nav_to_transfer(): Click nav to Transfer page. Returns "transfer_nav_clicked" or "transfer_nav_not_found".
+- amex_is_transfer_page(): Transfer page check. Returns "transfer_page=True" or "transfer_page=False". 
+  - You must consider the goal reached ONLY if "transfer_page=True".
+- close_popups(): Dismiss modals/cookie banners (e.g., ESC and consent button). Returns a status string.
+- scroll_down(pixels=1000): Scroll the page. Returns "Scrolled down <pixels>px".
+- current_url(): Returns "URL: <current_url>".
+- human_gate(message="..."): Pause for human to complete CAPTCHA/2FA or manual steps; continue after ENTER. Returns "human_done".
+- finish_session(): Close the browser session.
+
+Operational rules:
+- Use ONLY the registered tools; do not define new functions. Be concise in tool usage.
+- After each action, rely on the updated page state. If an expected element is missing, try close_popups(), scroll_down(), and re-check.
+- If login or navigation is blocked by CAPTCHA/2FA, call human_gate() with a clear instruction and then continue.
+- Do NOT type or submit any sensitive information unless explicitly provided in the task context.
+- Stop immediately after amex_is_transfer_page() returns transfer_page=True and call finish_session().
+
 """
 
 @dataclass
@@ -440,7 +465,7 @@ class RunSpec:
 
 
 def build_agent(max_steps: int = 30) -> CodeAgent:
-    model = TransformersModel(model_id="meta-llama/Llama-3.2-3B-Instruct") # "meta-llama/Llama-3.1-8B-Instruct"
+    model = TransformersModel(model_id="meta-llama/Llama-3.1-8B-Instruct") # "meta-llama/Llama-3.1-8B-Instruct"
     agent = CodeAgent(
         tools=[
             go_to, click_text, write_text, press, close_popups, current_url,
