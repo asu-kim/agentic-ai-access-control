@@ -81,7 +81,7 @@ def _wait_css(sel: str, timeout: int = 30):
         EC.presence_of_element_located((By.CSS_SELECTOR, sel))
     )
 
-def _try_click(by: By, val: str,timeout: int, retries: int = 2, center: bool = True) -> bool:
+def _try_click(by: By, val: str, timeout: int, retries: int = 2, center: bool = True) -> bool:
     """
     Try to click an element found by (by, val) quickly without waiting for clickable.
     Returns True if any click attempt succeeds, else False.
@@ -295,6 +295,7 @@ def finish_session() -> str:
     Returns:
         str: Status message indicating the browser was closed.
     """
+    sleep(5)
     driver.quit()
     return "Browser closed"
 
@@ -496,15 +497,15 @@ Always call the registered @tool functions directly.
 
 Store max_price as a variable first.
 Print each steps' description for users.
-If you failed to execute the function, call human_gate()
+If you failed to execute the function, call human_gate() and try again
 
 Steps:
 - Prefer direct results via amazon_open_results(query, max_price).
 - On a results page, use amazon_add_to_cart() without argument.
 - To add to cart: call amazon_add_to_cart(). If you receive ADD_FAILED_NEEDS_HUMAN, call human_gate(), then retry add.
-- To proceed to checkout: call amazon_proceed_to_checkout(). If it returns HUMAN_NEEDED_SIGNIN or HUMAN_NEEDED_CAPTCHA, call human_gate() and retry.
-- NEVER place the order. Stop after reaching the checkout/payment stage.
-- After calling amazon_proceed_to_checkout(), call amazon_stop_if_checkout_spc() and finish your action. 
+- To proceed to checkout: call amazon_proceed_to_checkout(). If it returns HUMAN_NEEDED_SIGNIN or HUMAN_NEEDED_CAPTCHA, call human_gate().
+- After calling amazon_proceed_to_checkout(), call amazon_stop_if_checkout_spc() and if you are in checkout page, finish your session and stop.
+
 
 amazon_open_results(query, max_price): Open Amazon search results for the query, optionally capped by a maximum price.
 amazon_next_results_page(): Go to the next search results page if available.
@@ -512,7 +513,7 @@ amazon_open_product(): Open a product detail page
 amazon_add_to_cart(): Click the “Add to Cart” button, retrying after variant selection if needed.
 amazon_proceed_to_checkout(): Proceed from the cart to the checkout flow (may require sign-in or CAPTCHA).
 close_popups(): Dismiss any visible modal or popup windows (e.g., warranty upsell, alerts).
-amazon_stop_if_checkout_spc(close_browser=True): Stop the process if SPC checkout page is reached. After call this, finish your action.
+amazon_stop_if_checkout_spc(close_browser=True): Stop the process if SPC checkout page is reached. If you reach checkout page, finish your action. 
 go_back(): Navigate back to the previous page.
 go_to(url): Navigate directly to a specified URL.
 finish_session(): Close the browser session.
@@ -530,7 +531,7 @@ class RunSpec:
 
 
 def build_agent(max_steps: int = 10):
-    model_id = "meta-llama/Llama-3.2-3B-Instruct" # "meta-llama/Llama-3.1-8B-Instruct"
+    model_id = "meta-llama/Llama-3.1-8B-Instruct" # "meta-llama/Llama-3.1-8B-Instruct"
 
     model = TransformersModel(model_id=model_id)
 
@@ -555,7 +556,7 @@ def parse_args():
     ap.add_argument("--query", required=True, help="Product search query")
     ap.add_argument("--max", dest="max_price", type=float, default=None, help="Max acceptable price (USD)")
     ap.add_argument("--pages", type=int, default=5, help="Max results pages to traverse")
-    ap.add_argument("--max-steps", type=int, default=10, help="Max tool-calling steps for the agent")
+    ap.add_argument("--max-steps", type=int, default=5, help="Max tool-calling steps for the agent")
     return ap.parse_args()
 
 def main():
