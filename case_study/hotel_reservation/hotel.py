@@ -20,7 +20,7 @@ from smolagents.agents import ActionStep as SmolActionStep
 
 load_dotenv()
 HEADLESS = False
-FIXED_MODEL_ID = "meta-llama/Llama-3.2-3B-Instruct" # "meta-llama/Llama-3.1-8B-Instruct"
+FIXED_MODEL_ID = "meta-llama/Llama-3.1-8B-Instruct" # "meta-llama/Llama-3.1-8B-Instruct"
 
 firefox_options = webdriver.FirefoxOptions()
 if HEADLESS:
@@ -366,7 +366,7 @@ def bkg_click_reserve_cta() -> str:
 
 
 def build_agent(max_steps: int = 10) -> CodeAgent:
-    model = TransformersModel(model_id=FIXED_MODEL_ID, device="auto")
+    model = TransformersModel(model_id=FIXED_MODEL_ID)
     tools = [
         go_to, close_popups,
         bkg_home, bkg_set_destination, bkg_set_dates, bkg_set_guests,
